@@ -163,7 +163,7 @@ impl PerCoreSchedulerExt for &mut PerCoreScheduler {
 			},
 		);
 
-		interrupts::enable();
+		interrupts::enable_and_wait_event();
 	}
 
 	#[cfg(target_arch = "riscv64")]
