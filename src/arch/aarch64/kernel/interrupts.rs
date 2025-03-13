@@ -68,6 +68,18 @@ pub fn enable_and_wait() {
 	}
 }
 
+/// Enable Interrupts and wait for the next event
+#[inline]
+pub fn enable_and_wait_event() {
+	unsafe {
+		asm!(
+			"msr daifclr, {mask}; wfe",
+			mask = const 0b111,
+			options(nostack, nomem),
+		);
+	}
+}
+
 /// Disable all interrupts
 #[inline]
 pub fn disable() {
