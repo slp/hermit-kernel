@@ -45,7 +45,8 @@ name = "measure_startup_time"
 harness = false
 
 [features]
-default = ["pci", "pci-ids", "acpi", "fsgsbase", "smp", "tcp", "dhcpv4", "fuse", "vsock"]
+#default = ["pci", "pci-ids", "acpi", "fsgsbase", "smp", "tcp", "dhcpv4", "fuse", "vsock"]
+default = []
 acpi = []
 common-os = []
 dhcpv4 = ["smoltcp", "smoltcp/proto-dhcpv4", "smoltcp/socket-dhcpv4"]
@@ -171,7 +172,7 @@ memory_addresses = { version = "0.2.2", default-features = false, features = [
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 aarch64 = { version = "0.0.13", default-features = false }
-arm-gic = { version = "0.1" }
+arm-gic = { git = "https://github.com/slp/arm-gic", branch = "rpi4b" }
 hermit-dtb = { version = "0.1" }
 semihosting = { version = "0.1", optional = true }
 memory_addresses = { version = "0.2.2", default-features = false, features = [

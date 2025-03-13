@@ -116,7 +116,7 @@ pub fn get_processor_count() -> u32 {
 }
 
 pub fn args() -> Option<&'static str> {
-	None
+	Some("")
 }
 
 /// Real Boot Processor initialization as soon as we have put the first Welcome message on the screen.
@@ -127,10 +127,15 @@ pub fn boot_processor_init() {
 	crate::mm::init();
 	crate::mm::print_information();
 	CoreLocal::get().add_irq_counter();
+	info!("env");
 	env::init();
+	info!("int");
 	interrupts::init();
+	info!("freq");
 	processor::detect_frequency();
+	info!("info");
 	processor::print_information();
+	info!("time");
 	systemtime::init();
 	#[cfg(feature = "pci")]
 	pci::init();
@@ -146,7 +151,7 @@ pub fn application_processor_init() {
 }
 
 fn finish_processor_init() {
-	debug!("Initialized Processor");
+	info!("Initialized Processor");
 }
 
 pub fn boot_next_processor() {

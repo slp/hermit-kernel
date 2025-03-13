@@ -17,6 +17,7 @@ use crate::{KERNEL_STACK_SIZE, mm, scheduler};
 ///
 /// See entry.S and ARM Cortex-A Series Programmer's Guide for ARMv8-A, Version 1.0, PDF page 172
 const L0TABLE_ADDRESS: VirtAddr = VirtAddr::new(0x0000_ffff_ffff_f000u64);
+//const L0TABLE_ADDRESS: VirtAddr = VirtAddr::new(0x212000u64);
 
 /// Number of Offset bits of a virtual address for a 4 KiB page, which are shifted away to get its Page Frame Number (PFN).
 const PAGE_BITS: usize = 12;

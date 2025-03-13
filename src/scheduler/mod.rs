@@ -140,7 +140,9 @@ impl PerCoreSchedulerExt for &mut PerCoreScheduler {
 	fn reschedule(self) {
 		use core::arch::asm;
 
-		use arm_gic::gicv3::{GicV3, IntId, SgiTarget};
+		use arch::GIC;
+		use arm_gic::IntId;
+		use arm_gic::gicv2::{SgiTarget, SgiTargetListFilter};
 
 		use crate::interrupts::SGI_RESCHED;
 
@@ -148,14 +150,16 @@ impl PerCoreSchedulerExt for &mut PerCoreScheduler {
 			asm!("dsb nsh", "isb", options(nostack, nomem, preserves_flags));
 		}
 
+		interrupts::disable();
 		let reschedid = IntId::sgi(SGI_RESCHED.into());
-		GicV3::send_sgi(
+		GIC.lock().as_mut().unwrap().send_sgi(
 			reschedid,
 			SgiTarget::List {
-				affinity3: 0,
-				affinity2: 0,
-				affinity1: 0,
+				//affinity3: 0,
+				//affinity2: 0,
+				//affinity1: 0,
 				target_list: 0b1,
+				target_list_filter: SgiTargetListFilter::CPUTargetList,
 			},
 		);
 

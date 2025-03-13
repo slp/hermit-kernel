@@ -6,7 +6,8 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use aarch64::regs::*;
 use ahash::RandomState;
-use arm_gic::gicv3::{GicV3, IntId, Trigger};
+use arm_gic::gicv2::GicV2;
+use arm_gic::{IntId, Trigger};
 use hashbrown::HashMap;
 use hermit_dtb::Dtb;
 use hermit_sync::{InterruptSpinMutex, InterruptTicketMutex, OnceCell, SpinMutex};
@@ -38,7 +39,7 @@ static mut TIMER_INTERRUPT: u32 = 0;
 static INTERRUPT_HANDLERS: OnceCell<HashMap<u8, InterruptHandlerQueue, RandomState>> =
 	OnceCell::new();
 /// Driver for the Arm Generic Interrupt Controller version 3 (or 4).
-pub(crate) static GIC: SpinMutex<Option<GicV3>> = SpinMutex::new(None);
+pub(crate) static GIC: SpinMutex<Option<GicV2>> = SpinMutex::new(None);
 
 /// Enable all interrupts
 #[inline]
@@ -116,7 +117,7 @@ pub(crate) fn install_handlers() {
 
 #[unsafe(no_mangle)]
 pub(crate) extern "C" fn do_fiq(_state: &State) -> *mut usize {
-	if let Some(irqid) = GicV3::get_and_acknowledge_interrupt() {
+	if let Some(irqid) = GIC.lock().as_mut().unwrap().get_and_acknowledge_interrupt() {
 		let vector: u8 = u32::from(irqid).try_into().unwrap();
 
 		debug!("Receive fiq {}", vector);
@@ -132,7 +133,7 @@ pub(crate) extern "C" fn do_fiq(_state: &State) -> *mut usize {
 		crate::executor::run();
 		core_scheduler().handle_waiting_tasks();
 
-		GicV3::end_interrupt(irqid);
+		GIC.lock().as_mut().unwrap().end_interrupt(irqid);
 
 		return core_scheduler()
 			.scheduler()
@@ -144,7 +145,9 @@ pub(crate) extern "C" fn do_fiq(_state: &State) -> *mut usize {
 
 #[unsafe(no_mangle)]
 pub(crate) extern "C" fn do_irq(_state: &State) -> *mut usize {
-	if let Some(irqid) = GicV3::get_and_acknowledge_interrupt() {
+	let mut gic_lock = GIC.lock();
+	let gic = gic_lock.as_mut().unwrap();
+	if let Some(irqid) = gic.get_and_acknowledge_interrupt() {
 		let vector: u8 = u32::from(irqid).try_into().unwrap();
 
 		debug!("Receive interrupt {}", vector);
@@ -160,7 +163,7 @@ pub(crate) extern "C" fn do_irq(_state: &State) -> *mut usize {
 		crate::executor::run();
 		core_scheduler().handle_waiting_tasks();
 
-		GicV3::end_interrupt(irqid);
+		gic.end_interrupt(irqid);
 
 		return core_scheduler()
 			.scheduler()
@@ -172,7 +175,12 @@ pub(crate) extern "C" fn do_irq(_state: &State) -> *mut usize {
 
 #[unsafe(no_mangle)]
 pub(crate) extern "C" fn do_sync(state: &State) {
-	let irqid = GicV3::get_and_acknowledge_interrupt().unwrap();
+	let irqid = GIC
+		.lock()
+		.as_mut()
+		.unwrap()
+		.get_and_acknowledge_interrupt()
+		.unwrap();
 	let esr = ESR_EL1.get();
 	let ec = esr >> 26;
 	let iss = esr & 0x00ff_ffff;
@@ -194,7 +202,7 @@ pub(crate) extern "C" fn do_sync(state: &State) {
 			error!("Table Base Register {:#x}", TTBR0_EL1.get());
 			error!("Exception Syndrome Register {:#x}", esr);
 
-			GicV3::end_interrupt(irqid);
+			GIC.lock().as_mut().unwrap().end_interrupt(irqid);
 			scheduler::abort()
 		} else {
 			error!("Unknown exception");
@@ -227,6 +235,7 @@ pub fn wakeup_core(_core_to_wakeup: CoreId) {
 pub(crate) fn init() {
 	info!("Initialize generic interrupt controller");
 
+	/*
 	let dtb = unsafe {
 		Dtb::from_raw(ptr::with_exposed_provenance(
 			env::boot_info().hardware_info.device_tree.unwrap().get() as usize,
@@ -243,6 +252,13 @@ pub(crate) fn init() {
 	let gicc_start = PhysAddr::new(u64::from_be_bytes(slice.try_into().unwrap()));
 	let (slice, _residual_slice) = residual_slice.split_at(core::mem::size_of::<u64>());
 	let gicc_size = u64::from_be_bytes(slice.try_into().unwrap());
+	*/
+
+	// 0x40041000 0x1000 0x40042000 0x2000 0x40044000 0x2000 0x40046000 0x2000
+	let gicd_start = PhysAddr::new(0xff841000);
+	let gicd_size = 0x1000u64;
+	let gicc_start = PhysAddr::new(0xff842000);
+	let gicc_size = 0x2000u64;
 
 	info!(
 		"Found GIC Distributor interface at {:p} (size {:#X})",
@@ -253,8 +269,7 @@ pub(crate) fn init() {
 		gicc_start, gicc_size
 	);
 
-	let gicd_address =
-		virtualmem::allocate_aligned(gicd_size.try_into().unwrap(), 0x10000).unwrap();
+	let gicd_address = virtualmem::allocate_aligned(gicd_size.try_into().unwrap(), 0x1000).unwrap();
 	debug!("Mapping GIC Distributor interface to virtual address {gicd_address:p}",);
 
 	let mut flags = PageTableEntryFlags::empty();
@@ -266,8 +281,7 @@ pub(crate) fn init() {
 		flags,
 	);
 
-	let gicc_address =
-		virtualmem::allocate_aligned(gicc_size.try_into().unwrap(), 0x10000).unwrap();
+	let gicc_address = virtualmem::allocate_aligned(gicc_size.try_into().unwrap(), 0x1000).unwrap();
 	debug!("Mapping generic interrupt controller to virtual address {gicc_address:p}",);
 	paging::map::<BasePageSize>(
 		gicc_address,
@@ -276,10 +290,23 @@ pub(crate) fn init() {
 		flags,
 	);
 
-	GicV3::set_priority_mask(0xff);
-	let mut gic = unsafe { GicV3::new(gicd_address.as_mut_ptr(), gicc_address.as_mut_ptr()) };
+	let mut gic = unsafe {
+		GicV2::new(
+			gicd_address.as_u64() as *mut u64,
+			gicc_address.as_u64() as *mut u64,
+		)
+	};
+	gic.set_priority_mask(0xff);
+	/*
+	let mut gic = unsafe {
+		GIC.lock()
+			.unwrap()
+			.new(gicd_address.as_mut_ptr(), gicc_address.as_mut_ptr())
+	};
+	*/
 	gic.setup();
 
+	/*
 	for node in dtb.enum_subnodes("/") {
 		let parts: Vec<_> = node.split('@').collect();
 
@@ -303,7 +330,7 @@ pub(crate) fn init() {
 					TIMER_INTERRUPT = irq;
 				}
 
-				debug!(
+				info!(
 					"Timer interrupt: {}, type {}, flags {}",
 					irq, irqtype, irqflags
 				);
@@ -331,7 +358,42 @@ pub(crate) fn init() {
 				gic.enable_interrupt(timer_irqid, true);
 			}
 		}
+	}*/
+
+	let irqtype = 0x1;
+	let irq = 14;
+	let irqflags = 0x04;
+
+	unsafe {
+		TIMER_INTERRUPT = irq;
 	}
+
+	info!(
+		"Timer interrupt: {}, type {}, flags {}",
+		irq, irqtype, irqflags
+	);
+
+	IRQ_NAMES
+		.lock()
+		.insert(u8::try_from(irq).unwrap() + PPI_START, "Timer");
+
+	// enable timer interrupt
+	let timer_irqid = if irqtype == 1 {
+		IntId::ppi(irq)
+	} else if irqtype == 0 {
+		IntId::spi(irq)
+	} else {
+		panic!("Invalid interrupt type");
+	};
+	gic.set_interrupt_priority(timer_irqid, 0x00);
+	if (irqflags & 0xf) == 4 || (irqflags & 0xf) == 8 {
+		gic.set_trigger(timer_irqid, Trigger::Level);
+	} else if (irqflags & 0xf) == 2 || (irqflags & 0xf) == 1 {
+		gic.set_trigger(timer_irqid, Trigger::Edge);
+	} else {
+		panic!("Invalid interrupt level!");
+	}
+	gic.enable_interrupt(timer_irqid, true);
 
 	let reschedid = IntId::sgi(SGI_RESCHED.into());
 	gic.set_interrupt_priority(reschedid, 0x00);

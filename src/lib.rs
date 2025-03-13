@@ -187,7 +187,7 @@ fn boot_processor_main() -> ! {
 	info!("Kernel starts at {:p}", env::get_base_address());
 
 	if let Some(fdt) = env::fdt() {
-		info!("FDT:\n{fdt:#?}");
+		//info!("FDT:\n{fdt:#?}");
 	}
 
 	unsafe extern "C" {

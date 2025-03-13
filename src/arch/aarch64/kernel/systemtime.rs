@@ -53,6 +53,7 @@ pub fn init() {
 		.expect(".dtb file has invalid header")
 	};
 
+	/*
 	for node in dtb.enum_subnodes("/") {
 		let parts: Vec<_> = node.split('@').collect();
 
@@ -95,6 +96,7 @@ pub fn init() {
 			}
 		}
 	}
+	*/
 
 	PL031_ADDRESS.set(VirtAddr::zero()).unwrap();
 	BOOT_TIME.set(0).unwrap();

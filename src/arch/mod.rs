@@ -10,6 +10,7 @@ cfg_if::cfg_if! {
 		pub(crate) use self::aarch64::kernel::core_local;
 		pub(crate) use self::aarch64::kernel::interrupts;
 		pub(crate) use self::aarch64::kernel::interrupts::wakeup_core;
+		pub(crate) use self::aarch64::kernel::interrupts::GIC;
 		#[cfg(feature = "pci")]
 		pub(crate) use self::aarch64::kernel::pci;
 		pub(crate) use self::aarch64::kernel::processor;
